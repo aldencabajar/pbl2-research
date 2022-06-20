@@ -56,18 +56,20 @@ data <-
     select(-years_worked, -months_worked)
 
 # # get PHQ-9
+data <- 
 data %>%
-  mutate(across(.cols = all_of(phq_cols),
+  mutate(
+    across(.cols = all_of(phq_cols),
                 ~ case_when(. == "Not at all" ~ 0L,
                             . == "Several days" ~ 1L, 
                             . == "More than half the days" ~ 2L, 
                             . == "Nearly everyday" ~ 3L) ,
-                .names = "{.col}_i"))  %>% 
-  select(matches("^phq\\d+_i"))
-# smpl <- 
-#   data %>%
-#     mutate(across(.cols = all_of(phq_cols), factor))
-# data[,phq_score := rowSums(data[,phq_cols, with = FALSE])]
+                .names = "{.col}_i")
+  ) %>%  
+  rowwise() %>% 
+  mutate(phq_score = sum(c_across(phq1_i:phq9_i))) %>% 
+  ungroup() %>% 
+  mutate(depression = if_else(phq_score >= 10L , "Yes", "No"))
 ```
 
 
@@ -88,7 +90,7 @@ demog_vars <-
     "hospital_ward_assigned"
   )
 vars <- colnames(data)[!colnames(data) %in% c("age", "survey_no")]
-tbl1 <- CreateTableOne(vars = demog_vars, data = data)
+tbl1 <- CreateTableOne(vars = demog_vars, data = data, strata = "depression")
 print(tbl1, showAllLevels = TRUE)
 ```
 
