@@ -1,0 +1,97 @@
+---
+title: "PBL 2 Research"
+output: html_notebook
+---
+
+
+```{r setup, include=FALSE}
+library(glue)
+library(data.table)
+library(dplyr)
+library(ggplot2)
+library(skimr)
+library(tableone)
+library(stringr)
+sheet_id <- "1yne07WkYQrWBo0CWo5-C9VPhmN3E_4-NaRKjnHJSyrc"
+url <- glue("https://docs.google.com/spreadsheets/d/{sheet_id}/export?gid=0&format=csv")
+data <- fread(url)
+```
+
+
+## Summaries
+
+```{r}
+head(data)
+```
+
+```{r}
+skim(data)
+
+```
+
+<br>
+<br>
+
+## Data pre-processing
+```{r}
+# get PHQ columns
+phq_cols <- grep("^phq(?!10)", colnames(data), value = TRUE, perl = TRUE)
+# convert time_worked_velez to months
+data <- 
+  data %>%
+    mutate(
+      years_worked = as.integer(str_extract(
+      str_to_lower(time_worked_velez), "(\\d+)\\s+(?=year)"
+    )),
+      months_worked = as.integer(str_extract(
+        str_to_lower(time_worked_velez), "(\\d+)\\s+(?=month)"
+      )),
+      total_months_worked = case_when(
+        !is.na(years_worked) & is.na(months_worked) ~ years_worked,
+        is.na(years_worked) & !is.na(months_worked) ~ months_worked,
+        is.na(years_worked) & is.na(months_worked) ~ NA_integer_,
+        TRUE ~ years_worked + months_worked
+      )
+    ) %>%
+    select(-years_worked, -months_worked)
+
+# # get PHQ-9
+data %>%
+  mutate(across(.cols = all_of(phq_cols),
+                ~ case_when(. == "Not at all" ~ 0L,
+                            . == "Several days" ~ 1L, 
+                            . == "More than half the days" ~ 2L, 
+                            . == "Nearly everyday" ~ 3L) ,
+                .names = "{.col}_i"))  %>% 
+  select(matches("^phq\\d+_i"))
+# smpl <- 
+#   data %>%
+#     mutate(across(.cols = all_of(phq_cols), factor))
+# data[,phq_score := rowSums(data[,phq_cols, with = FALSE])]
+```
+
+
+## Exploratory Data Analysis
+
+### Demographics
+```{r}
+demog_vars <-
+  c(
+    "age",
+    "sex",
+    "civil_status",
+    "living_arrangement",
+    "provide_financial_support",
+    "job_profile",
+    "current_monthly_salary",
+    "total_months_worked",
+    "hospital_ward_assigned"
+  )
+vars <- colnames(data)[!colnames(data) %in% c("age", "survey_no")]
+tbl1 <- CreateTableOne(vars = demog_vars, data = data)
+print(tbl1, showAllLevels = TRUE)
+```
+
+
+
+
