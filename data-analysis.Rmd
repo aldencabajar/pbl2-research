@@ -1,7 +1,22 @@
 ---
 title: "PBL 2 Research"
-output: html_notebook
+output:
+  html_notebook:
+    toc: yes
+    toc_float: yes
+    toc_depth: 2
 ---
+<style>
+div.main-container {
+  max-width: 1750px;
+}
+
+.main-container {
+  margin-left: 10%;
+  margin-right: 10%;
+}
+
+</style>
 
 
 ```{r setup, include=FALSE}
@@ -12,6 +27,14 @@ library(ggplot2)
 library(skimr)
 library(tableone)
 library(stringr)
+library(knitr)
+showMessage <- FALSE
+showWarning <- TRUE
+set_alias(w = "fig.width", h = "fig.height", res = "results")
+opts_chunk$set(comment = "", error= TRUE, warning = showWarning, message = showMessage,
+               tidy = FALSE, cache = F, echo = T,
+               fig.width = 10, fig.height = 10)
+
 sheet_id <- "1yne07WkYQrWBo0CWo5-C9VPhmN3E_4-NaRKjnHJSyrc"
 url <- glue("https://docs.google.com/spreadsheets/d/{sheet_id}/export?gid=0&format=csv")
 data <- fread(url)
