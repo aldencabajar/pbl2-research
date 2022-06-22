@@ -4,7 +4,7 @@ output:
   html_notebook:
     toc: yes
     toc_float: yes
-    toc_depth: 2
+    toc_depth: 3
 ---
 <style>
 div.main-container {
@@ -29,6 +29,8 @@ library(tableone)
 library(stringr)
 library(knitr)
 library(tidyr)
+library(purrr)
+library(broom)
 showMessage <- FALSE
 showWarning <- TRUE
 set_alias(w = "fig.width", h = "fig.height", res = "results")
@@ -84,7 +86,17 @@ data <- data %>%
   mutate(
     infected_c19 = factor(infected_c19, levels = c("Yes", "No")),
     family_with_c19 = factor(family_with_c19, levels = c("Yes", "No")),
-    attended_patients_with_c19 = factor(attended_patients_with_c19, levels = c("Yes", "No"))
+    attended_patients_with_c19 = factor(attended_patients_with_c19, levels = c("Yes", "No")),
+    current_monthly_salary = factor(
+      current_monthly_salary,
+      levels = c(
+        "Less than 8,000",
+        "P8,000 - P10,000",
+        "P10,001 - P13,500",
+        "P13,501 - P20,000",
+        "P20,001 - P30,000"
+      )
+    )
   )
 
 ## get PHQ-9
@@ -146,7 +158,23 @@ data <-
       
     ) 
   
-
+## misc processing (imputation, model df transformations) -> data_imputed
+mean_age <- mean(data$age, na.rm = TRUE)
+mean_months_worked <- mean(data$total_months_worked, na.rm = TRUE)
+data_imputed <-
+  data %>%
+  mutate(
+    # mean impute age
+    age = if_else(is.na(age), mean_age, as.numeric(age)),
+    # center age using the mean
+    age_mean_ctr = age - mean_age,
+    # impute total months worked
+    total_months_worked = if_else(
+      is.na(total_months_worked),
+      mean_months_worked,
+      as.numeric(total_months_worked)
+    )
+  )
 ```
 
 ```{r}
@@ -196,27 +224,32 @@ write.csv(tbl2_mat, file = "results/table_2.csv")
 
 
 ```{r, fig.width=12, fig.height=8}
+plt <- 
 tidyr::drop_na(data, depression) %>% 
-  mutate(hospital_ward_assigned = str_replace_all(hospital_ward_assigned, " ", "\n")) %>% 
+  mutate(hospital_ward_assigned = str_replace_all(hospital_ward_assigned, " ", "\n")) %>%
   ggplot(aes(x = hospital_ward_assigned, fill = depression)) +
   geom_bar(width = 0.6, position = position_dodge(width = 0.7, preserve = "single")) +
   theme(legend.position = "top", legend.title = element_blank(),
-        axis.title.x = element_blank())
+        axis.title.y = element_blank())
+plt
 ```
+
+save plot to `results/`.
+
+```{r}
+ggsave(
+  "results/prevalence_of_depression_per_dept.png",
+  plt,
+  width = 10,
+  height = 5,
+  units = "in"
+)
+```
+
 
 ### Coping strategies employed in different departments
 
 ```{r}
-# coping_df <- 
-# data %>%
-#   select(survey_no, starts_with("subs_")) %>% 
-#   pivot_longer(
-#     cols = starts_with("subs_"),
-#     names_to = "coping_strategy",
-#     values_to = "score"
-#   )
-# head(coping_df)  
-
 coping_cols <- str_subset(colnames(data), "^subs_")
 coping_cols_no_sub <- str_replace_all(coping_cols, "^subs_", "")
 
@@ -227,6 +260,53 @@ data %>%
 tbl3_mat <- print(tbl3, noSpaces = TRUE, quote = FALSE, printToggle = FALSE, contDigits = 1) 
 write.csv(tbl3_mat, file = "results/table_3.csv")
   
+```
+
+
+## Modeling 
+```{r}
+lapply(select(data_imputed, demog_vars), unique)
+```
+
+
+
+```{r}
+model_cols <- c(demog_vars, "age_mean_ctr", "depression")
+model_df <- 
+data_imputed %>% 
+  rename_with(~str_replace_all(., "^subs_", ""), .cols = starts_with("subs_")) %>% 
+  pivot_longer(
+    cols = all_of(coping_cols_no_sub),
+    names_to = "coping_strategy",
+    values_to = "score"
+  ) %>% 
+  select(survey_no, model_cols, coping_strategy, score) %>% 
+  group_by(coping_strategy) %>% 
+  nest(df = c(survey_no, model_cols, score))
+model_df
+```
+
+```{r}
+fit_model <- function(model_df, frml) {
+  model_df %>% 
+    group_by(coping_strategy) %>% 
+    summarise(
+      mdl = map(df, ~ glm(frml, data = ., family = "binomial")),
+      aic = map_dbl(mdl, AIC),
+      coefs = map(mdl, tidy),
+      ci = map(mdl, ~(confint(.) %>% exp %>%  as_tibble))
+    ) %>% 
+    select(-mdl) %>%
+    unnest(c(coefs, ci)) %>%
+     filter(term == "score") %>% 
+     select(-term) %>% 
+    mutate(odds_ratio = exp(estimate)) %>% 
+    select(coping_strategy:p.value, odds_ratio, everything())
+  
+}
+
+base_mdl <- fit_model(model_df, depression ~ score)
+base_mdl
 ```
 
 
