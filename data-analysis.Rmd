@@ -28,6 +28,7 @@ library(skimr)
 library(tableone)
 library(stringr)
 library(knitr)
+library(tidyr)
 showMessage <- FALSE
 showWarning <- TRUE
 set_alias(w = "fig.width", h = "fig.height", res = "results")
@@ -78,7 +79,15 @@ data <-
     ) %>%
     select(-years_worked, -months_worked)
 
-# # get PHQ-9
+#relevel categories
+data <- data %>% 
+  mutate(
+    infected_c19 = factor(infected_c19, levels = c("Yes", "No")),
+    family_with_c19 = factor(family_with_c19, levels = c("Yes", "No")),
+    attended_patients_with_c19 = factor(attended_patients_with_c19, levels = c("Yes", "No"))
+  )
+
+## get PHQ-9
 data <- 
 data %>%
   mutate(
@@ -92,13 +101,63 @@ data %>%
   rowwise() %>% 
   mutate(phq_score = sum(c_across(phq1_i:phq9_i))) %>% 
   ungroup() %>% 
-  mutate(depression = if_else(phq_score >= 10L , "Yes", "No"))
+  mutate(
+    # classify clinical depression 
+    depression = factor(
+      if_else(phq_score >= 10L , "Depression", "No Depression"),
+      levels = c("Depression", "No Depression")
+    ), 
+    
+    # get severity categories
+    depression_severity = case_when(
+      between(phq_score, 1, 4) ~ "Minimal",
+      between(phq_score, 5, 9) ~ "Mild",
+      between(phq_score, 10, 14) ~ "Moderate",
+      between(phq_score, 15, 19) ~ "Moderately Severe",
+      between(phq_score, 20, 27) ~ "Severe"
+    )
+)
+
+## get Brief COPE scores and combine by sub-scales
+data <- 
+  data %>% 
+    mutate(
+      across(.cols = starts_with("brief_cope"),
+             ~ case_when(. == "I haven't been doing this at all" ~ 1L,
+                         . == "A little bit" ~ 2L,
+                         . == "A medium amount" ~ 3L,
+                         . == "I've been doing this a lot" ~ 4L,
+                         TRUE ~ 0L),
+             .names = "{.col}_i"),
+      subs_Acceptance = brief_cope_item20_i + brief_cope_item27_i,
+      `subs_Active Coping` = brief_cope_item2_i + brief_cope_item7_i,
+      subs_Religion = brief_cope_item20_i + brief_cope_item27_i,
+      subs_Planning =brief_cope_item14_i + brief_cope_item12_i,
+      `subs_Positive Reframing` =  brief_cope_item12_i + brief_cope_item17_i,
+      `subs_Instrumental Support` =  brief_cope_item10_i + brief_cope_item23_i,
+      `subs_Emotional Support` =  brief_cope_item5_i + brief_cope_item15_i,
+      subs_Humor =  brief_cope_item18_i + brief_cope_item28_i,
+      subs_Venting = brief_cope_item9_i + brief_cope_item21_i,
+      `subs_Behavioral Disengagement` = brief_cope_item6_i + brief_cope_item16_i,
+      `subs_Substance Abuse` = brief_cope_item4_i + brief_cope_item11_i,
+      subs_Denial = brief_cope_item3_i + brief_cope_item8_i,
+      `subs_Self-Distraction` = brief_cope_item1_i + brief_cope_item18_i,
+      `subs_Self-Blame` = brief_cope_item13_i + brief_cope_item25_i
+      
+    ) 
+  
+
+```
+
+```{r}
+summary(select(data, starts_with("subs")))
 ```
 
 
 ## Exploratory Data Analysis
 
-### Demographics
+### Demographic characteristics of Nurses with and without Depression (Table 1) 
+
 ```{r}
 demog_vars <-
   c(
@@ -107,16 +166,67 @@ demog_vars <-
     "civil_status",
     "living_arrangement",
     "provide_financial_support",
-    "job_profile",
     "current_monthly_salary",
     "total_months_worked",
-    "hospital_ward_assigned"
+    "infected_c19",
+    "family_with_c19",
+    "attended_patients_with_c19"
   )
-vars <- colnames(data)[!colnames(data) %in% c("age", "survey_no")]
 tbl1 <- CreateTableOne(vars = demog_vars, data = data, strata = "depression")
 print(tbl1, showAllLevels = TRUE)
 ```
 
 
+```{r}
+tbl1_mat <- print(tbl1, noSpaces = TRUE, quote = FALSE, printToggle = FALSE)
+write.csv(tbl1_mat, file = "results/table_1.csv")
+```
+
+
+### Frequency of different depression severity levels per hospital department (Table 2)
+
+This won't be printed since this is too long.
+
+```{r}
+tbl2 <- CreateTableOne(vars = c("depression_severity", "phq_score"), 
+                       data = data, strata = "hospital_ward_assigned")
+tbl2_mat <- print(tbl2, noSpaces = TRUE, quote = FALSE, printToggle = FALSE) 
+write.csv(tbl2_mat, file = "results/table_2.csv")
+```
+
+
+```{r, fig.width=12, fig.height=8}
+tidyr::drop_na(data, depression) %>% 
+  mutate(hospital_ward_assigned = str_replace_all(hospital_ward_assigned, " ", "\n")) %>% 
+  ggplot(aes(x = hospital_ward_assigned, fill = depression)) +
+  geom_bar(width = 0.6, position = position_dodge(width = 0.7, preserve = "single")) +
+  theme(legend.position = "top", legend.title = element_blank(),
+        axis.title.x = element_blank())
+```
+
+### Coping strategies employed in different departments
+
+```{r}
+# coping_df <- 
+# data %>%
+#   select(survey_no, starts_with("subs_")) %>% 
+#   pivot_longer(
+#     cols = starts_with("subs_"),
+#     names_to = "coping_strategy",
+#     values_to = "score"
+#   )
+# head(coping_df)  
+
+coping_cols <- str_subset(colnames(data), "^subs_")
+coping_cols_no_sub <- str_replace_all(coping_cols, "^subs_", "")
+
+tbl3 <- 
+data %>% 
+  rename_with(~str_replace_all(., "^subs_", ""), .cols = starts_with("subs_")) %>% 
+  CreateTableOne(vars = coping_cols_no_sub, strata = "hospital_ward_assigned", data = ., test = FALSE)
+tbl3_mat <- print(tbl3, noSpaces = TRUE, quote = FALSE, printToggle = FALSE, contDigits = 1) 
+write.csv(tbl3_mat, file = "results/table_3.csv")
+  
+```
 
 
