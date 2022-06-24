@@ -31,6 +31,7 @@ library(knitr)
 library(tidyr)
 library(purrr)
 library(broom)
+library(readr)
 showMessage <- FALSE
 showWarning <- TRUE
 set_alias(w = "fig.width", h = "fig.height", res = "results")
@@ -130,6 +131,19 @@ data %>%
     )
 )
 
+## reclassify hospital wards
+data <- data %>% 
+  mutate(
+    hospital_ward_assigned = case_when(
+      hospital_ward_assigned %in% c("Private Pavillon Sounth 3rd Floor",
+                                    "Private Pavillon South 2nd Floor") ~ "Private Ward",
+      hospital_ward_assigned == "Private Pavillon South Ground Floor" ~ "Pediatrics Ward",
+      hospital_ward_assigned == "Private Pavillon Annex" ~ "COVID-19 Facility",
+      hospital_ward_assigned == "Ward IV" ~ "COVID-19 Isolation",
+      TRUE ~ hospital_ward_assigned
+    )
+  )
+
 ## get Brief COPE scores and combine by sub-scales
 data <- 
   data %>% 
@@ -173,7 +187,9 @@ data_imputed <-
       is.na(total_months_worked),
       mean_months_worked,
       as.numeric(total_months_worked)
-    )
+    ),
+    # center total months worked
+    total_months_worked_ctr = total_months_worked - mean_months_worked 
   )
 ```
 
@@ -223,14 +239,14 @@ write.csv(tbl2_mat, file = "results/table_2.csv")
 ```
 
 
-```{r, fig.width=12, fig.height=8}
+```{r, fig.width=11, fig.height=6}
 plt <- 
 tidyr::drop_na(data, depression) %>% 
   mutate(hospital_ward_assigned = str_replace_all(hospital_ward_assigned, " ", "\n")) %>%
   ggplot(aes(x = hospital_ward_assigned, fill = depression)) +
   geom_bar(width = 0.6, position = position_dodge(width = 0.7, preserve = "single")) +
   theme(legend.position = "top", legend.title = element_blank(),
-        axis.title.y = element_blank())
+        axis.title.x = element_blank(), axis.text = element_text(size = 11))
 plt
 ```
 
@@ -271,7 +287,7 @@ lapply(select(data_imputed, demog_vars), unique)
 
 
 ```{r}
-model_cols <- c(demog_vars, "age_mean_ctr", "depression")
+model_cols <- c(demog_vars, "age_mean_ctr", "total_months_worked_ctr", "depression")
 model_df <- 
 data_imputed %>% 
   rename_with(~str_replace_all(., "^subs_", ""), .cols = starts_with("subs_")) %>% 
@@ -283,11 +299,11 @@ data_imputed %>%
   select(survey_no, model_cols, coping_strategy, score) %>% 
   group_by(coping_strategy) %>% 
   nest(df = c(survey_no, model_cols, score))
-model_df
+head(model_df)
 ```
 
-```{r}
-fit_model <- function(model_df, frml) {
+```{r warning=FALSE}
+fit_model <- function(model_df, frml, model_name) {
   model_df %>% 
     group_by(coping_strategy) %>% 
     summarise(
@@ -298,15 +314,50 @@ fit_model <- function(model_df, frml) {
     ) %>% 
     select(-mdl) %>%
     unnest(c(coefs, ci)) %>%
-     filter(term == "score") %>% 
-     select(-term) %>% 
-    mutate(odds_ratio = exp(estimate)) %>% 
-    select(coping_strategy:p.value, odds_ratio, everything())
+     filter(term != "(Intercept)") %>%
+     # select(-term) %>%
+    mutate(odds_ratio = exp(estimate),
+           model_name = model_name) %>% 
+    select(coping_strategy, model_name, aic, term:p.value, odds_ratio, everything())
   
 }
 
-base_mdl <- fit_model(model_df, depression ~ score)
-base_mdl
+model_list <- tribble(
+  ~name, ~frml,
+  "Base Model", depression ~ score,
+  "Model w/ Age", depression ~ score + age_mean_ctr,
+  "Model w/ Age & Sex", depression ~ score + age_mean_ctr + sex, 
+   "Model 1", depression ~ score + age_mean_ctr + sex + civil_status,
+  "Model 2", depression ~ score + age_mean_ctr + sex + total_months_worked_ctr,
+   "Model 3", depression ~ score + age_mean_ctr + sex + infected_c19
+) %>% 
+  mutate(
+    models = map2(name, frml, ~fit_model(model_df, .y, .x))
+  )
+
+```
+
+ Check AICs for models
+
+```{r}
+map(model_list$models, ~unique(select(., coping_strategy, model_name, aic))) %>% 
+  bind_rows() %>% 
+  pivot_wider(id_cols = coping_strategy, names_from = model_name, values_from = aic)
 ```
 
 
+print results for model 3
+```{r}
+results <- 
+filter(model_list, name == "Model 3") %>% 
+  pull(models) %>% 
+  .[[1]] %>% 
+  select(-model_name, -aic)
+
+write_csv(filter(results, term == "score") %>% select(-term),
+          "results/table_4.csv")
+write_csv(filter(results, term != "score"), "results/table_5.csv")
+
+results
+
+```
