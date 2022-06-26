@@ -16,6 +16,10 @@ div.main-container {
   margin-right: 10%;
 }
 
+.tocify-extend-page {
+   height: 50px;
+}
+
 </style>
 
 
