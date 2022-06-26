@@ -85,9 +85,9 @@ data <-
 #relevel categories
 data <- data %>% 
   mutate(
-    infected_c19 = factor(infected_c19, levels = c("Yes", "No")),
-    family_with_c19 = factor(family_with_c19, levels = c("Yes", "No")),
-    attended_patients_with_c19 = factor(attended_patients_with_c19, levels = c("Yes", "No")),
+    infected_c19 = factor(infected_c19, levels = c("No", "Yes")),
+    family_with_c19 = factor(family_with_c19, levels = c("No", "Yes")),
+    attended_patients_with_c19 = factor(attended_patients_with_c19, levels = c("No", "Yes")),
     current_monthly_salary = factor(
       current_monthly_salary,
       levels = c(
@@ -120,6 +120,7 @@ data %>%
       if_else(phq_score >= 10L , "Depression", "No Depression"),
       levels = c("Depression", "No Depression")
     ), 
+    depression_flag = if_else(depression == "Depression", 1, 0),
     
     # get severity categories
     depression_severity = case_when(
@@ -287,7 +288,7 @@ lapply(select(data_imputed, demog_vars), unique)
 
 
 ```{r}
-model_cols <- c(demog_vars, "age_mean_ctr", "total_months_worked_ctr", "depression")
+model_cols <- c(demog_vars, "age_mean_ctr", "total_months_worked_ctr", "depression_flag")
 model_df <- 
 data_imputed %>% 
   rename_with(~str_replace_all(., "^subs_", ""), .cols = starts_with("subs_")) %>% 
@@ -324,12 +325,12 @@ fit_model <- function(model_df, frml, model_name) {
 
 model_list <- tribble(
   ~name, ~frml,
-  "Base Model", depression ~ score,
-  "Model w/ Age", depression ~ score + age_mean_ctr,
-  "Model w/ Age & Sex", depression ~ score + age_mean_ctr + sex, 
-   "Model 1", depression ~ score + age_mean_ctr + sex + civil_status,
-  "Model 2", depression ~ score + age_mean_ctr + sex + total_months_worked_ctr,
-   "Model 3", depression ~ score + age_mean_ctr + sex + infected_c19
+  "Base Model", depression_flag ~ score,
+  "Model w/ Age", depression_flag ~ score + age_mean_ctr,
+  "Model w/ Age & Sex", depression_flag ~ score + age_mean_ctr + sex, 
+   "Model 1", depression_flag ~ score + age_mean_ctr + sex + civil_status,
+  "Model 2", depression_flag ~ score + age_mean_ctr + sex + total_months_worked_ctr,
+   "Model 3", depression_flag ~ score + age_mean_ctr + sex + infected_c19
 ) %>% 
   mutate(
     models = map2(name, frml, ~fit_model(model_df, .y, .x))
