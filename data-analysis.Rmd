@@ -17,7 +17,7 @@ div.main-container {
 }
 
 .tocify-extend-page {
-   height: 50px;
+   height: 250px;
 }
 
 </style>
@@ -36,6 +36,7 @@ library(tidyr)
 library(purrr)
 library(broom)
 library(readr)
+library(MuMIn)
 showMessage <- FALSE
 showWarning <- TRUE
 set_alias(w = "fig.width", h = "fig.height", res = "results")
@@ -270,6 +271,7 @@ ggsave(
 
 ### Coping strategies employed in different departments
 
+
 ```{r}
 coping_cols <- str_subset(colnames(data), "^subs_")
 coping_cols_no_sub <- str_replace_all(coping_cols, "^subs_", "")
@@ -281,6 +283,15 @@ data %>%
 tbl3_mat <- print(tbl3, noSpaces = TRUE, quote = FALSE, printToggle = FALSE, contDigits = 1) 
 write.csv(tbl3_mat, file = "results/table_3.csv")
   
+```
+
+
+```{r}
+tbl_s1 <- 
+data %>% 
+  rename_with(~str_replace_all(., "^subs_", ""), .cols = starts_with("subs_")) %>% 
+  CreateTableOne(vars = coping_cols_no_sub, strata = "depression", data = ., test = TRUE)
+print(tbl_s1)
 ```
 
 
@@ -317,7 +328,7 @@ fit_model <- function(model_df, frml, model_name) {
       coefs = map(mdl, tidy),
       ci = map(mdl, ~(confint(.) %>% exp %>%  as_tibble))
     ) %>% 
-    select(-mdl) %>%
+    # select(-mdl) %>%
     unnest(c(coefs, ci)) %>%
      filter(term != "(Intercept)") %>%
      # select(-term) %>%
@@ -361,8 +372,44 @@ filter(model_list, name == "Model 3") %>%
 
 write_csv(filter(results, term == "score") %>% select(-term),
           "results/table_4.csv")
-write_csv(filter(results, term != "score"), "results/table_5.csv")
+# write_csv(filter(results, term != "score"), "results/table_5.csv")
 
 results
 
 ```
+
+
+
+### Model Averaging 
+
+```{r}
+mdl_avg <- 
+filter(model_list, name == "Model 3") %>% 
+  pull(models) %>% 
+  .[[1]] %>% 
+  # pull(mdl) %>% 
+  distinct(coping_strategy, mdl) %>% 
+  filter(coping_strategy != "Religion") %>% 
+   pull(mdl) %>% 
+model.avg(rank="AIC") 
+smr <- summary(mdl_avg)
+smr
+```
+
+```{r}
+idx <- 3:5 
+new_table_5 <-  
+as_tibble(smr$coefmat.full, rownames = "term") %>% 
+  slice(idx) %>% 
+  select(-3) %>% 
+  mutate(odds_ratio = exp(Estimate)) %>% 
+  bind_cols(
+    confint(mdl_avg)[idx,]
+  )
+new_table_5
+```
+
+```{r}
+write_csv(new_table_5, "results/table_5.csv")
+```
+
