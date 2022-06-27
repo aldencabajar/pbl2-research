@@ -161,10 +161,10 @@ data <-
                          . == "I've been doing this a lot" ~ 4L,
                          TRUE ~ 0L),
              .names = "{.col}_i"),
-      subs_Acceptance = brief_cope_item20_i + brief_cope_item27_i,
+      subs_Acceptance = brief_cope_item20_i + brief_cope_item24_i,
       `subs_Active Coping` = brief_cope_item2_i + brief_cope_item7_i,
-      subs_Religion = brief_cope_item20_i + brief_cope_item27_i,
-      subs_Planning =brief_cope_item14_i + brief_cope_item12_i,
+      subs_Religion = brief_cope_item22_i + brief_cope_item27_i,
+      subs_Planning =brief_cope_item14_i + brief_cope_item25_i,
       `subs_Positive Reframing` =  brief_cope_item12_i + brief_cope_item17_i,
       `subs_Instrumental Support` =  brief_cope_item10_i + brief_cope_item23_i,
       `subs_Emotional Support` =  brief_cope_item5_i + brief_cope_item15_i,
@@ -173,8 +173,8 @@ data <-
       `subs_Behavioral Disengagement` = brief_cope_item6_i + brief_cope_item16_i,
       `subs_Substance Abuse` = brief_cope_item4_i + brief_cope_item11_i,
       subs_Denial = brief_cope_item3_i + brief_cope_item8_i,
-      `subs_Self-Distraction` = brief_cope_item1_i + brief_cope_item18_i,
-      `subs_Self-Blame` = brief_cope_item13_i + brief_cope_item25_i
+      `subs_Self-Distraction` = brief_cope_item1_i + brief_cope_item19_i,
+      `subs_Self-Blame` = brief_cope_item13_i + brief_cope_item26_i
       
     ) 
   
@@ -370,7 +370,7 @@ filter(model_list, name == "Model 3") %>%
   .[[1]] %>% 
   select(-model_name, -aic)
 
-write_csv(filter(results, term == "score") %>% select(-term),
+write_csv(filter(results, term == "score") %>% select(-term, -mdl),
           "results/table_4.csv")
 # write_csv(filter(results, term != "score"), "results/table_5.csv")
 
