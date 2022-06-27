@@ -228,7 +228,7 @@ print(tbl1, showAllLevels = TRUE)
 
 
 ```{r}
-tbl1_mat <- print(tbl1, noSpaces = TRUE, quote = FALSE, printToggle = FALSE)
+tbl1_mat <- print(tbl1, noSpaces = TRUE, quote = FALSE, printToggle = FALSE, showAllLevels = TRUE)
 write.csv(tbl1_mat, file = "results/table_1.csv")
 ```
 
